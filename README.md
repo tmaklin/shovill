@@ -2,7 +2,16 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 ![Don't judge me](https://img.shields.io/badge/Language-Perl_5-steelblue.svg)
 
-# Shovill
+# Shovill-fork
+
+This is a fork of [shovill](https://github.com/tseemann/shovill) that adds the following features:
+- Replace read correction with lighter with [fastp](https://github.com/OpenGene/fastp).
+- Use fastp to stitch reads.
+- Use fastp to trim adapters `--trim`.
+- Add option to run host DNA removal using [hostile](https://github.com/bede/hostile) `--clean`.
+- Update bwa-mem to [bwa-mem2](https://github.com/bwa-mem2/bwa-mem2).
+
+## Shovill
 
 Assemble bacterial isolate genomes from Illumina paired-end reads
 
@@ -28,13 +37,14 @@ Please use [Megahit](https://github.com/voutcn/megahit) directly instead.
 
 1. Estimate genome size and read length from reads (unless `--gsize` provided)
 2. Reduce FASTQ files to a sensible depth (default `--depth 100`)
-3. Trim adapters from reads (with `--trim` only)
-4. Conservatively correct sequencing errors in reads
-5. Pre-overlap ("stitch") paired-end reads
-6. Assemble with SPAdes/SKESA/Megahit with modified kmer range and PE + long SE reads
-7. Correct minor assembly errors by mapping reads back to contigs
-8. Remove contigs that are too short, too low coverage, or pure homopolymers
-9. Produce final FASTA with nicer names and parseable annotations
+3. Remove host DNA (with `--clean` only).
+4. Trim adapters from reads (with `--trim` only)
+5. Conservatively correct sequencing errors in reads
+6. Pre-overlap ("stitch") paired-end reads
+7. Assemble with SPAdes/SKESA/Megahit with modified kmer range and PE + long SE reads
+8. Correct minor assembly errors by mapping reads back to contigs
+9. Remove contigs that are too short, too low coverage, or pure homopolymers
+10. Produce final FASTA with nicer names and parseable annotations
 
 ## Quick Start
 
@@ -60,6 +70,11 @@ ATTGTTCTGAGGGCCTCACTGGATTTTAACATCCTGCTAACGTCAGTTTCCAACGTCCTGTCG
 ```
 
 ## Installation
+
+You'll need to install the following dependencies manually (all are available from bioconda):
+- bwa-mem2
+- fastp
+- hostile
 
 ### Homebrew
 
@@ -110,18 +125,17 @@ You will need to install all the dependencies manually:
 * [SKESA](https://github.com/ncbi/SKESA/releases)
 * [MEGAHIT](https://github.com/voutcn/megahit/releases)
 * [Velvet](https://www.ebi.ac.uk/~zerbino/velvet/) >= 1.2
-* [Lighter](https://github.com/mourisl/Lighter/releases)
-* [FLASh](https://ccb.jhu.edu/software/FLASH/)
+* [fastp](https://github.com/OpenGene/fastp) >= 0.23.4
+* [hostile](https://github.com/bede/hostile) >= 0.4.0
 * [SAMtools](http://www.htslib.org/) >= 1.3 (prefer >= 1.10)
-* [BWA MEM](https://sourceforge.net/projects/bio-bwa/files/) 
+* [bwa-mem2](https://github.com/bwa-mem2/bwa-mem2) 
 * [KMC](http://sun.aei.polsl.pl/REFRESH/index.php?page=projects&project=kmc&subpage=about)
 * [seqtk](https://github.com/lh3/seqtk/releases)
 * [pigz](https://zlib.net/pigz/). Pigz should be available with your OS distribution.
 * [Pilon](https://github.com/broadinstitute/pilon/releases/) (Java).
-* [Trimmomatic](http://www.usadellab.org/cms/?page=trimmomatic) (Java)
 * [samclip](https://github.com/tseemann/samclip/releases)
 
-Note that you will need to make pilon and trimmomatic executables. You can make a simple wrapper
+Note that you will need to make the pilon executable. You can make a simple wrapper
 for each that just passes the shell arguments.
 
 ## Output files
@@ -193,6 +207,8 @@ ASSEMBLER
   --opts XXX      Extra assembler options in quotes eg. spades: "--untrusted-contigs locus.fna" ... (default: '')
   --kmers XXX     K-mers to use <blank=AUTO> (default: '')
 MODULES
+  --clean         Enable host DNA cleaning (default: OFF)
+  --hostiledb     Custom host sequence database for hostile (default: OFF)
   --trim          Enable adaptor trimming (default: OFF)
   --noreadcorr    Disable read error correction (default: OFF)
   --nostitch      Disable read stitching (default: OFF)
