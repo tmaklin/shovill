@@ -55,6 +55,7 @@ my %VERSION = (
   'samclip'     => 'samclip --version 2>&1',
   'java'        => 'java -version 2>&1 | grep version',
   'pilon'       => 'pilon --version 2>&1 | grep -v _JAVA',
+  'hostile'     => 'hostile --version 2>&1',
 );
 
 # Hardware stats
@@ -66,7 +67,7 @@ my(@Options, $version,
              $outdir, $force, $cpus, $tmpdir, $keepfiles, $namefmt,
              $kmers, $gsize, $R1, $R2, $assembler, $opts, $ram, $depth,
              $nocorr, $trim, $nostitch, $noreadcorr,
-             $minlen, $mincov);
+             $minlen, $mincov, $clean, $hostiledb);
 setOptions();
 
 # Say hello
@@ -173,6 +174,19 @@ if ($depth and $depth > 0 and $orig_depth > 1.1 * $depth) {
 }
 else {
   msg("No read depth reduction requested or necessary.");
+}
+
+if ($clean) {
+  msg("Removing host DNA with 'hostile'");
+  my $hostile_cmd = "hostile clean --fastq1 $R1 --fastq2 $R2 --aligner bowtie2 --threads $cpus --force";
+  unless ($hostiledb == '') {
+      $hostile_cmd = $hostile_cmd . " --index $hostiledb";
+  }
+  run_cmd($hostile_cmd);
+  run_cmd("mv *clean_1* R1.clean.fq.gz");
+  run_cmd("mv *clean_2* R2.clean.fq.gz");
+  $R1 = "R1.clean.fq.gz";
+  $R2 = "R2.clean.fq.gz";
 }
 
 # Set RAM for Java apps to match --ram
@@ -709,6 +723,8 @@ sub setOptions {
     {OPT=>"opts=s",     VAR=>\$opts,      DEFAULT=>'',   DESC=>"Extra assembler options in quotes eg. spades: '--sc'"},
     {OPT=>"kmers=s",    VAR=>\$kmers,     DEFAULT=>'',   DESC=>"K-mers to use <blank=AUTO>"},
     "MODULES",
+    {OPT=>"clean!",     VAR=>\$clean,     DEFAULT=>0,    DESC=>"Enable host DNA cleaning"},
+    {OPT=>"hostiledb!", VAR=>\$hostiledb, DEFAULT=>'',   DESC=>"Custom host sequence database for hostile"},
     {OPT=>"trim!",      VAR=>\$trim,      DEFAULT=>0,    DESC=>"Enable adaptor trimming"},
     {OPT=>"noreadcorr!",VAR=>\$noreadcorr,DEFAULT=>0,    DESC=>"Disable read error correction"},
     {OPT=>"nostitch!",  VAR=>\$nostitch,  DEFAULT=>0,    DESC=>"Disable read stitching"},
