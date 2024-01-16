@@ -51,6 +51,7 @@ my %VERSION = (
   'java'        => 'java -version 2>&1 | grep version',
   'pilon'       => 'pilon --version 2>&1 | grep -v _JAVA',
   'fastp'       => 'fastp --version 2>&1',
+  'hostile'     => 'hostile --version 2>&1',
 );
 
 # Hardware stats
@@ -62,7 +63,7 @@ my(@Options, $version,
              $outdir, $force, $cpus, $tmpdir, $keepfiles, $namefmt,
              $kmers, $gsize, $R1, $R2, $assembler, $opts, $ram, $depth,
              $nocorr, $trim, $nostitch, $noreadcorr,
-             $minlen, $mincov);
+             $minlen, $mincov, $clean, $hostiledb);
 setOptions();
 
 # Say hello
@@ -170,6 +171,19 @@ else {
   msg("No read depth reduction requested or necessary.");
 }
 
+if ($clean) {
+  msg("Removing host DNA with 'hostile'");
+  my $hostile_cmd = "hostile clean --fastq1 $R1 --fastq2 $R2 --aligner bowtie2 --threads $cpus --force";
+  unless ($hostiledb == '') {
+      $hostile_cmd = $hostile_cmd . " --index $hostiledb";
+  }
+  run_cmd($hostile_cmd);
+  run_cmd("mv *clean_1* R1.clean.fq.gz");
+  run_cmd("mv *clean_2* R2.clean.fq.gz");
+  $R1 = "R1.clean.fq.gz";
+  $R2 = "R2.clean.fq.gz";
+}
+
 # Set RAM for Java apps to match --ram
 my $javaopt = "-Xmx${ram_int}g";
 msg("Appending $javaopt to _JAVA_OPTIONS");
@@ -233,7 +247,7 @@ else {
 
 unless ($noreadcorr) {
   msg("Correcting reads with 'fastp'");
-  $fastp_cmd = $fastp_cmd . " -c --overlap_len_require $MIN_PE_OVERLAP --in1 R1.fq.gz --in2 R2.fq.gz --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus";
+  $fastp_cmd = $fastp_cmd . " -c --overlap_len_require $MIN_PE_OVERLAP --in1 $R1 --in2 $R2 --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus";
   run_cmd($fastp_cmd);
   $COR1 = "R1.cor.fq.gz";
   $COR2 = "R2.cor.fq.gz";
@@ -242,12 +256,12 @@ else {
   msg("Enabled --noreadcorr, so no read correction will be performed");
   $fastp_cmd = $fastp_cmd . " -GQL";
   if ($trim) {
-      $fastp_cmd = $fastp_cmd . " --in1 R1.fq.gz --in2 R2.fq.gz --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus";
+      $fastp_cmd = $fastp_cmd . " --in1 $R1 --in2 $R2 --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus";
       run_cmd($fastp_cmd);
       $COR1 = "R1.cor.fq.gz";
       $COR2 = "R2.cor.fq.gz";
   } elsif (!$nostitch) {
-      $fastp_cmd = $fastp_cmd . " --in1 R1.fq.gz --in2 R2.fq.gz --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus";
+      $fastp_cmd = $fastp_cmd . " --in1 $R1 --in2 $R2 --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus";
       run_cmd($fastp_cmd);
       $COR1 = "R1.cor.fq.gz";
       $COR2 = "R2.cor.fq.gz";
@@ -699,6 +713,8 @@ sub setOptions {
     {OPT=>"opts=s",     VAR=>\$opts,      DEFAULT=>'',   DESC=>"Extra assembler options in quotes eg. spades: '--sc'"},
     {OPT=>"kmers=s",    VAR=>\$kmers,     DEFAULT=>'',   DESC=>"K-mers to use <blank=AUTO>"},
     "MODULES",
+    {OPT=>"clean!",     VAR=>\$clean,     DEFAULT=>0,    DESC=>"Enable host DNA cleaning"},
+    {OPT=>"hostiledb!", VAR=>\$hostiledb, DEFAULT=>'',   DESC=>"Custom host sequence database for hostile"},
     {OPT=>"trim!",      VAR=>\$trim,      DEFAULT=>0,    DESC=>"Enable adaptor trimming"},
     {OPT=>"noreadcorr!",VAR=>\$noreadcorr,DEFAULT=>0,    DESC=>"Disable read error correction"},
     {OPT=>"nostitch!",  VAR=>\$nostitch,  DEFAULT=>0,    DESC=>"Disable read stitching"},
