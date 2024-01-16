@@ -42,7 +42,6 @@ my %VERSION = (
 #  'mash'        => 'mash --version 2>&1',
   'kmc'         => 'kmc -h 2>&1 | grep KMC',
   'trimmomatic' => 'trimmomatic -version 2>&1 | grep -v _JAVA',
-  'lighter'     => 'lighter -v 2>&1',
   'flash'       => 'flash --version 2>&1 | grep FLASH',
   'spades.py'   => 'spades.py  --version 2>&1',
   'skesa'       => 'skesa --version 2>&1 | grep SKESA',
@@ -55,6 +54,7 @@ my %VERSION = (
   'samclip'     => 'samclip --version 2>&1',
   'java'        => 'java -version 2>&1 | grep version',
   'pilon'       => 'pilon --version 2>&1 | grep -v _JAVA',
+  'fastp'       => 'fastp --version 2>&1',
 );
 
 # Hardware stats
@@ -234,8 +234,8 @@ msg("Using kmers: $kmers");
 my $COR1 = "R1.fq.gz";
 my $COR2 = "R2.fq.gz";
 unless ($noreadcorr) {
-  msg("Correcting reads with 'Lighter'");
-  run_cmd("lighter -od . -r R1.fq.gz -r R2.fq.gz -K 32 $gsize -t $cpus -maxcor 1");
+  msg("Correcting reads with 'fastp'");
+  run_cmd("fastp -A -c --in1 R1.fq.gz --in2 R2.fq.gz --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus");
   $COR1 = "R1.cor.fq.gz";
   $COR2 = "R2.cor.fq.gz";
 }
