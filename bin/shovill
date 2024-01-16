@@ -50,7 +50,7 @@ my %VERSION = (
   'megahit_toolkit' => 'megahit_toolkit dumpversion 2>&1',
   'velveth'     => 'velveth 2>&1 | grep Version',
   'velvetg'     => 'velvetg 2>&1 | grep Version',
-  'bwa'         => 'bwa 2>&1 | grep Version:',
+  'bwa-mem2'    => 'bwa-mem2 version 2>/dev/null',
   'samtools'    => 'samtools 2>&1 | grep Version:',
   'samclip'     => 'samclip --version 2>&1',
   'java'        => 'java -version 2>&1 | grep version',
@@ -327,11 +327,11 @@ my $changes = {};
 unless ($nocorr) {
   -r $asm or err("Can not see '$asm' file to correct!");
   msg("Checking for assembly errors in $asm");
-  run_cmd("bwa index $asm", "bwa-index");
+  run_cmd("bwa-mem2 index $asm", "bwa-index");
   run_cmd("samtools faidx $asm", "faidx");
   # use original reads here, to help fix any errors from overlapping PE stitching
   my $sort_ram = int($half_ram * 1024 / $sort_cpus); # RAM per thread, in Mb
-  run_cmd("(bwa mem -v 3 -x intractg -t $cpus $asm R1.fq.gz R2.fq.gz"
+  run_cmd("(bwa-mem2 mem -v 3 -x intractg -t $cpus $asm R1.fq.gz R2.fq.gz"
          ." | samclip --ref ${asm}.fai"
          ." | samtools sort --threads $sort_cpus -m ${sort_ram}m"
          ." --reference $asm -T $tmpdir -o $BAM)", "bwa+samtools-sort");
