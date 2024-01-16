@@ -18,7 +18,6 @@ my $AUTHOR = "Torsten Seemann";
 my $URL = "https://github.com/tseemann/shovill";
 my $BAM = "$EXE.bam";
 my $APPDIR = abs_path( "$FindBin::RealBin/.." );
-my $ADAPTERS = "$APPDIR/db/trimmomatic.fa"; # hard-code this for Conda etc.
 my $LOGTMP = File::Temp->new();
 my $LOGFILE = $LOGTMP->filename;
 
@@ -27,9 +26,8 @@ my $MAX_K = 127;              # maximum for most assemblers
 my $KMER_READ_FRAC = 0.75;    # ensure max kmer below this prop of read length
 my $MIN_BQ = 3;               # for trimming and stats and pilon
 my $MIN_MQ = 60;              # for pilon
-my $MIN_FLASH_OVERLAP = 20;   # for stitching
+my $MIN_PE_OVERLAP = 20;   # for stitching
 my $MIN_RAM_GB = 2;           # for all tools
-my $TRIMOPT = "ILLUMINACLIP:$ADAPTERS:1:30:11 LEADING:$MIN_BQ TRAILING:$MIN_BQ MINLEN:30 TOPHRED33";
 
 my @CMDLINE = ($0, @ARGV);    # save this for printing to log later
 my $t0 = time;                # basetime to measure running duration
@@ -41,8 +39,6 @@ my %VERSION = (
   'pigz'        => 'pigz --version 2>&1',
 #  'mash'        => 'mash --version 2>&1',
   'kmc'         => 'kmc -h 2>&1 | grep KMC',
-  'trimmomatic' => 'trimmomatic -version 2>&1 | grep -v _JAVA',
-  'flash'       => 'flash --version 2>&1 | grep FLASH',
   'spades.py'   => 'spades.py  --version 2>&1',
   'skesa'       => 'skesa --version 2>&1 | grep SKESA',
   'megahit'     => 'megahit --version 2>&1',
@@ -83,7 +79,6 @@ msg("Machine has $CORES CPU cores and $MEMORY GB RAM");
 $outdir or err("Please specify output folder with --outdir");
 -r $R1 or err("Can't read --R1 $R1");
 -r $R2 or err("Can't read --R2 $R2");
--r $ADAPTERS or err("Can't see adapter file: $ADAPTERS");
 $gsize = $gsize ? parse_genome_size($gsize) : 0;  # 0 = autodetect later
 $cpus ||= $CORES;  # if cpus==0 use all available
 $cpus > 0 or err("Invalid --cpus $cpus");
@@ -180,20 +175,6 @@ my $javaopt = "-Xmx${ram_int}g";
 msg("Appending $javaopt to _JAVA_OPTIONS");
 $ENV{'_JAVA_OPTIONS'} .= " $javaopt";
 
-# Get reads: if trimming, trim the originals into this folder, otherwise symlink
-if ($trim) {
-  msg("Trimming reads");
-  run_cmd(
-    "trimmomatic PE -threads $cpus -phred33".
-    " \Q$R1\E \Q$R2\E R1.fq.gz /dev/null R2.fq.gz /dev/null $TRIMOPT",
-    "trimmomatic"
-  );
-}
-else {
-  run_cmd("ln -sf \Q$R1\E R1.fq.gz");
-  run_cmd("ln -sf \Q$R2\E R2.fq.gz");
-}
-
 # Calculating read length distribution
 my $RLEN = $stat->{'avg_len'};
 msg("Average read length looks like $RLEN bp");
@@ -233,38 +214,49 @@ msg("Using kmers: $kmers");
 # Correct reads
 my $COR1 = "R1.fq.gz";
 my $COR2 = "R2.fq.gz";
+my $fastp_cmd = "fastp";
+if ($trim) {
+    msg("Will trim reads with 'fastp'");
+} else {
+    $fastp_cmd = $fastp_cmd . " -A";
+}
+
+my $SE = "";
+unless ($nostitch) {
+    msg("Will overlap/stitch PE reads with 'fastp'");
+    $fastp_cmd = $fastp_cmd . " --merge --merged_out merged.cor.fq.gz";
+    $SE = "merged.cor.fq.gz";
+}
+else {
+    msg("Enabled --nostitch, so no read stitching will be performed");
+}
+
 unless ($noreadcorr) {
   msg("Correcting reads with 'fastp'");
-  run_cmd("fastp -A -c --in1 R1.fq.gz --in2 R2.fq.gz --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus");
+  $fastp_cmd = $fastp_cmd . " -c --overlap_len_require $MIN_PE_OVERLAP --in1 R1.fq.gz --in2 R2.fq.gz --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus";
+  run_cmd($fastp_cmd);
   $COR1 = "R1.cor.fq.gz";
   $COR2 = "R2.cor.fq.gz";
 }
 else {
   msg("Enabled --noreadcorr, so no read correction will be performed");
+  $fastp_cmd = $fastp_cmd . " -GQL";
+  if ($trim) {
+      $fastp_cmd = $fastp_cmd . " --in1 R1.fq.gz --in2 R2.fq.gz --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus";
+      run_cmd($fastp_cmd);
+      $COR1 = "R1.cor.fq.gz";
+      $COR2 = "R2.cor.fq.gz";
+  } elsif (!$nostitch) {
+      $fastp_cmd = $fastp_cmd . " --in1 R1.fq.gz --in2 R2.fq.gz --out1 R1.cor.fq.gz --out2 R2.cor.fq.gz --thread $cpus";
+      run_cmd($fastp_cmd);
+      $COR1 = "R1.cor.fq.gz";
+      $COR2 = "R2.cor.fq.gz";
+  }
 }
 
 # Overlap corrected reads
-my $SE  = "";
 my $PE1 = $COR1;
 my $PE2 = $COR2;
-unless ($nostitch) {
-  msg("Overlapping/stitching PE reads with 'FLASH'");
-  # WARNING: An unexpectedly high proportion of combined pairs (13.03%)
-  # overlapped by more than 80 bp, the --max-overlap (-M) parameter.
-  #my $max_overlap = $stat->{'max_len'} - int( $MIN_FLASH_OVERLAP / 2 ) ;
-  my $max_overlap = $stat->{'max_len'};
-  run_cmd(
-    "flash -m $MIN_FLASH_OVERLAP -M $max_overlap"
-   ." -d . -o flash -z -t $cpus $COR1 $COR2"
-   , "" # has its own label
-  );
-  $SE  = "flash.extendedFrags.fastq.gz";
-  $PE1 = "flash.notCombined_1.fastq.gz";
-  $PE2 = "flash.notCombined_2.fastq.gz";
-}
-else {
-  msg("Enabled --nostitch, so no read stitching will be performed");
-}
 
 # Running the assembler engine of chouce
 msg("Assembling reads with '$assembler'");
@@ -413,8 +405,6 @@ unless ($keepfiles) {
   unlink $BAM, "$BAM.bai";
   # assemblers
   remove_tree( $asmdir );
-  # FLASH
-  unlink glob("flash.his*");
 }
 
 # Say our goodbyes
